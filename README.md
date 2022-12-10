@@ -1,2 +1,0 @@
-# AppAttendance
-Attendance Taking app
