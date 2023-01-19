@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">Attendance</string>
+
+    <string name="todo">TODO</string>
+    <string name="attendance">Attendance</string>
+    <string name="enter_name">Enter name</string>
+    <string name="enter_roll_number">Enter roll number</string>
+    <string name="add_student">Add Student</string>
+    <string name="checkbox">checkbox</string>
+    <string name="registor">Registor</string>
+    <string name="save">Save</string>
+    <string name="savestudentdata">Save</string>
+    <string name="create_class">Create class</string>
+</resources>

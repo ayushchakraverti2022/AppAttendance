@@ -1,720 +1,362 @@
 package com.example.attendance;
 
-import androidx.annotation.NonNull;
+import static com.example.attendance.R.*;
+
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+
+import androidx.core.content.ContextCompat;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import android.Manifest;
+
 import android.annotation.SuppressLint;
+import android.app.AlertDialog;
+import android.app.Dialog;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.os.Build;
+import android.net.Uri;
 import android.os.Bundle;
+
 import android.os.Environment;
+import android.util.Log;
+import android.view.KeyEvent;
+import android.view.LayoutInflater;
 import android.view.View;
+
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
-import android.widget.CheckBox;
+
 import android.widget.EditText;
+import android.widget.ImageView;
+
+import android.widget.Spinner;
+import android.widget.TextView;
 import android.widget.Toast;
 
-import com.example.attendance.R;
-
-import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileWriter;
+import java.io.IOException;
+import java.security.spec.EncodedKeySpec;
+import java.sql.Struct;
+import java.text.DateFormat;
 import java.text.SimpleDateFormat;
-import java.util.Locale;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.Objects;
+import java.util.Scanner;
 
 public class MainActivity extends AppCompatActivity {
-    public Button button;
-    public EditText editText;
-    public String cmate[] =  new String[102];
-    private static final  int WRITE_EXTERNAL_STORAGE_CODE = 1;
-    @SuppressLint("MissingInflatedId")
+    public ImageView imageViewopenfolder;
+    public TextView createclassmessage;
+    public ImageView imageViewcreateclass;
+    public DateFormat df = new SimpleDateFormat("dd\\MM\\yyyy");
+    public File privatefullpath = new File(Environment.getExternalStorageDirectory(), "/Attendance/.private/");
+    public String privateclassfile_fullname = "classname.txt";
+    public Date d = new Date();
+    public String current_date = df.format(d);
+    public String selected_classfolder_fullpath;
+    public Spinner spinner;
+    public String current_class_halfname = "";
+    public ImageView imageViewdeleteclass;
+    public ArrayList<String> classes_array = new ArrayList<>();
+    public ArrayList<String> student_array_with_roll_num = new ArrayList<String>();
+    public ArrayList<String> student_present = new ArrayList<String>();
+    public Recycler_adapter adapter;
+    public ImageView imageViewaddstudent;
+    public Button saveattendance_button;
+    public static RecyclerView recyclerView;
+    public int REQ_CODE = 1;
+
+    @SuppressLint("NotifyDataSetChanged")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
-        button = findViewById(R.id.button);
+        setContentView(layout.activity_main);
+        // Find ids
+        imageViewopenfolder = findViewById(id.openfolder);
+        saveattendance_button = findViewById(id.Button);
+        createclassmessage = findViewById(R.id.createclassmessage);
+        spinner = findViewById(id.classname);
+        imageViewdeleteclass = findViewById(id.deleteclass);
+        imageViewaddstudent = findViewById(id.addstudent);
+        recyclerView = findViewById(id.recyclerView);
+        imageViewcreateclass = findViewById(id.createclass);
+        // Storage permission
+        if (ContextCompat.checkSelfPermission(MainActivity.this,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(MainActivity.this,
+                    new String[] { Manifest.permission.WRITE_EXTERNAL_STORAGE }, REQ_CODE);
+        }
 
-        button.setOnClickListener(new View.OnClickListener() {
+        // open folder function
+        imageViewopenfolder.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void onClick(View view) {
-
-                    if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.M){
-                        if(checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)== PackageManager.PERMISSION_DENIED){
-                            String[] permissions  = {Manifest.permission.WRITE_EXTERNAL_STORAGE};
-                            requestPermissions(permissions,WRITE_EXTERNAL_STORAGE_CODE);
-                        }else{
-                            savetxtfile(cmate);
-                        }
-                    }else{
-                        savetxtfile(cmate);
-                    }
+            public void onClick(View v) {
+                String path = String
+                        .valueOf(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS));
+                Uri uri = Uri.parse(path);
+                Intent intent = new Intent(Intent.ACTION_VIEW);
+                intent.setDataAndType(uri, "*/*");
+                startActivity(intent);
             }
         });
-    }
 
-    @SuppressLint("MissingSuperCall")
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        switch (requestCode){
-            case WRITE_EXTERNAL_STORAGE_CODE:{
-                if(grantResults.length>1 && grantResults[0]== PackageManager.PERMISSION_GRANTED){
-                    savetxtfile(cmate);
-                }else{
-                    Toast.makeText(this, "Storage permission is required to store", Toast.LENGTH_SHORT);
+        // class name loader and adapter
+        File f = new File(privatefullpath, privateclassfile_fullname);
+        if (f.exists()) {
+            imageViewopenfolder.setVisibility(View.VISIBLE);
+            imageViewdeleteclass.setVisibility(View.VISIBLE);
+            spinner.setVisibility(View.VISIBLE);
+            createclassmessage.setVisibility(View.GONE);
+        }
+        System.out.println(current_class_halfname);
+        if (f.exists()) {
+            try {
+                Scanner sc = new Scanner(f);
+                while (sc.hasNextLine()) {
+                    classes_array.add(sc.nextLine());
+                }
+                sc.close();
+
+            } catch (FileNotFoundException e) {
+                e.printStackTrace();
+            }
+
+        }
+
+        ArrayAdapter<String> load_classname_adapter = new ArrayAdapter<>(this, layout.spinner_layout, classes_array);
+        spinner.setAdapter(load_classname_adapter);
+
+        // class selector spinner function
+
+        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                current_class_halfname = spinner.getSelectedItem().toString();
+                File f = new File(privatefullpath, current_class_halfname + ".xlsx");
+                if (f.exists()) {
+                    student_array_with_roll_num.clear();
+                    try {
+                        Scanner sc = new Scanner(f);
+                        while (sc.hasNextLine()) {
+                            String srn = sc.nextLine();
+                            student_array_with_roll_num.add(srn);
+                            adapter = new Recycler_adapter(student_array_with_roll_num, MainActivity.this,
+                                    current_class_halfname);
+                            recyclerView.setLayoutManager(new LinearLayoutManager(MainActivity.this));
+                            recyclerView.setAdapter(adapter);
+                        }
+                        sc.close();
+                    } catch (FileNotFoundException e) {
+                        e.printStackTrace();
+                    }
+                } else {
+                    f = new File(privatefullpath.getParent(), "/" + current_class_halfname + "/"); // create class
+                                                                                                   // namefolder
+                    f.mkdirs();
+                    student_array_with_roll_num.clear();
+                    adapter = new Recycler_adapter(student_array_with_roll_num, MainActivity.this,
+                            current_class_halfname);
+                    recyclerView.setLayoutManager(new LinearLayoutManager(MainActivity.this));
+                    recyclerView.setAdapter(adapter);
+
                 }
             }
-        }
-    }
 
-    private void savetxtfile(String edata[]) {
-        String tstamp = new SimpleDateFormat("yyyyMMdd_HHmmss",Locale.getDefault()).format(System.currentTimeMillis());
-        try{
-            File path = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS);
-            File dir = new File(path + "/Attendance/");
-            dir.mkdirs();
-            String filename = tstamp +".xlsx";
-            File file = new File(dir, filename);
-            FileWriter fw = new FileWriter(file.getAbsoluteFile());
-            BufferedWriter bw = new BufferedWriter(fw);
-            for(int i =0;i<102;i++){
-               if(edata[i]!=null)
-                   bw.write(edata[i]+"\n");
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+
             }
+        });
+        // save attendance function
+        saveattendance_button.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (student_array_with_roll_num.size() > 0) {
+                    current_class_halfname = spinner.getSelectedItem().toString();
+                    File createfolder = new File(Environment.getExternalStorageDirectory(),
+                            "/Attendance/" + current_class_halfname + "/");
+                    createfolder.mkdirs();
+                    String filename = current_date + ".xlsx";
+                    File file = new File(createfolder, filename);
+                    try {
+                        student_present = adapter.student_list_present;
+                        FileWriter fw = new FileWriter(file);
+                        if (student_present.size() > 0) {
+                            for (int i = 0; i < student_present.size(); i++) {
+                                fw.write(student_present.get(i) + "\n");
+                            }
+                        } else {
+                            fw.write("None present");
+                        }
 
-            bw.close();
-            Toast.makeText(this, filename +" is saved to /n" + dir,Toast.LENGTH_SHORT).show();
-        }catch (Exception e){
+                        fw.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
 
-            Toast.makeText(this, e.getMessage(),Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(MainActivity.this, "Create a class and student firstly.", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
 
-        }
-    }
-    @SuppressLint("NonConstantResourceId")
-    public void onCheckboxClicked(View view) {
-        // Is the view now checked?
-        boolean checked = ((CheckBox) view).isChecked();
+        // delete class function
+        imageViewdeleteclass.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("Delete Class?")
+                        .setIcon(drawable.ic_baseline_delete_24)
+                        .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                classes_array.remove(current_class_halfname);
+                                File f = new File(privatefullpath, privateclassfile_fullname);
+                                try {
+                                    FileWriter fw = new FileWriter(f);
+                                    for (int i = 0; i < classes_array.size(); i++) {
+                                        fw.write(classes_array.get(i) + "\n");
+                                    }
+                                    fw.close();
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                }
+                                if (classes_array.size() > 0) {
+                                    spinner.setSelection(1);
+                                } else {
+                                    spinner.setSelection(-1);
+                                    student_array_with_roll_num.clear();
+                                    adapter.notifyDataSetChanged();
+                                }
+                                f = new File(privatefullpath.getParent(), current_class_halfname);
+                                if (f.exists()) {
+                                    f.delete();
+                                    f = new File(privatefullpath, current_class_halfname + ".xlsx");
+                                    if (f.exists()) {
+                                        f.delete();
+                                    }
+                                } else {
+                                    Toast.makeText(MainActivity.this,
+                                            "Class already deleted.\n Select/Create different class", Toast.LENGTH_LONG)
+                                            .show();
+                                }
+                                if (classes_array.size() == 0) {
+                                    f = new File(privatefullpath, privateclassfile_fullname);
+                                    f.delete();
+                                }
 
-        // Check which checkbox was clicked
-        switch(view.getId()) {
-            case R.id.checkBox1:
-                if (checked) {
-                    cmate[0] = "Abhash Tiwari";
-                }else{
-                    cmate[0] = null;
-                }break;
-            case R.id.checkBox2:
-                if (checked) {
-                    cmate[1] = "Abhay Bairagi";
-                }else {
-                    cmate[1] = null;
-                }break;
-            case R.id.checkBox3:
-                if (checked) {
-                    cmate[2] = "Abhi Agarwal";
-                }else{
-                    cmate[2] = null;
-                }break;
-            case R.id.checkBox4:
-                if (checked) {
-                    cmate[3] = "Abhinav Anand";
-                }else {
-                    cmate[3] = null;
-                }break;
-            case R.id.checkBox5:
-                if (checked) {
-                    cmate[4] = "Adarsh Singh";
-                }else{
-                    cmate[4] = null;
-                }break;
-            case R.id.checkBox6:
-                if (checked) {
-                    cmate[5] = "Aditya Goswami";
-                }else {
-                    cmate[5] = null;
-                }break;
-            case R.id.checkBox7:
-                if (checked) {
-                    cmate[6] = "Aditya Sharma";
-                }else{
-                    cmate[6] = null;
-                }break;
-            case R.id.checkBox8:
-                if (checked) {
-                    cmate[7] = "Aditya Sijaria";
-                }else {
-                    cmate[7] = null;
-                }break;
-            case R.id.checkBox9:
-                if (checked) {
-                    cmate[8] = "Akhil Chaturvedi";
-                }else{
-                    cmate[8] = null;
-                }break;
-            case R.id.checkBox10:
-                if (checked) {
-                    cmate[9] = "Akhilesh Yadav";
-                }else {
-                    cmate[9] = null;
-                }break;
-            case R.id.checkBox11:
-                if (checked) {
-                    cmate[10] = "Akshat Agarwal";
-                }else{
-                    cmate[10] = null;
-                }break;
-            case R.id.checkBox12:
-                if (checked) {
-                    cmate[11] = "Akshikaa Singh";
-                }else {
-                    cmate[11] = null;
-                }break;
-            case R.id.checkBox13:
-                if (checked) {
-                    cmate[12] = "Alex Livingston";
-                }else{
-                    cmate[12] = null;
-                }break;
-            case R.id.checkBox14:
-                if (checked) {
-                    cmate[13] = "Amber Soni";
-                }else {
-                    cmate[13] = null;
-                }break;
-            case R.id.checkBox15:
-                if (checked) {
-                    cmate[14] = "Anmol Sahu";
-                }else{
-                    cmate[14] = null;
-                }break;
-            case R.id.checkBox16:
-                if (checked) {
-                    cmate[15] = "Anuj kumar Mahra";
-                }else {
-                    cmate[15] = null;
-                }break;
-            case R.id.checkBox17:
-                if (checked) {
-                    cmate[16] = "Anushka Awelkar";
-                }else{
-                    cmate[16] = null;
-                }break;
-            case R.id.checkBox18:
-                if (checked) {
-                    cmate[17] = "Apurv Dube";
-                }else {
-                    cmate[17] = null;
-                }break;
-            case R.id.checkBox19:
-                if (checked) {
-                    cmate[18] = "Arpita Pathak";
-                }else{
-                    cmate[18] = null;
-                }break;
-            case R.id.checkBox20:
-                if (checked) {
-                    cmate[19] = "Arunika Bhattacharya";
-                }else {
-                    cmate[19] = null;
-                }break;
-            case R.id.checkBox21:
-                if (checked) {
-                    cmate[20] = "Arunish Nema";
-                }else{
-                    cmate[20] = null;
-                }break;
-            case R.id.checkBox22:
-                if (checked) {
-                    cmate[21] = "Aryan Nagar";
-                }else {
-                    cmate[21] = null;
-                }break;
-            case R.id.checkBox23:
-                if (checked) {
-                    cmate[22] = "Aviral Jain";
-                }else{
-                    cmate[22] = null;
-                }break;
-            case R.id.checkBox24:
-                if (checked) {
-                    cmate[23] = "Ayush Chakraverti";
-                }else {
-                    cmate[23] = null;
-                }break;
-            case R.id.checkBox25:
-                if (checked) {
-                    cmate[24] = "Ayush Shukla";
-                }else{
-                    cmate[24] = null;
-                }break;
-            case R.id.checkBox26:
-                if (checked) {
-                    cmate[25] = "Chhotelal Prajapati";
-                }else {
-                    cmate[25] = null;
-                }break;
-            case R.id.checkBox27:
-                if (checked) {
-                    cmate[26] = "Deepak Singh Porte";
-                }else{
-                    cmate[26] = null;
-                }break;
-            case R.id.checkBox28:
-                if (checked) {
-                    cmate[27] = "Dev Panvar";
-                }else {
-                    cmate[27] = null;
-                }break;
-            case R.id.checkBox29:
-                if (checked) {
-                    cmate[28] = "Dewanshi Asathi";
-                }else{
-                    cmate[28] = null;
-                }break;
-            case R.id.checkBox30:
-                if (checked) {
-                    cmate[29] = "Dhananjay Sarathe";
-                }else {
-                    cmate[29] = null;
-                }break;
-            case R.id.checkBox31:
-                if (checked) {
-                    cmate[30] = "Dheerap Singh Tanwar";
-                }else{
-                    cmate[30] = null;
-                }break;
-            case R.id.checkBox32:
-                if (checked) {
-                    cmate[31] = "Dhruv Soni";
-                }else {
-                    cmate[31] = null;
-                }break;
-            case R.id.checkBox33:
-                if (checked) {
-                    cmate[32] = "Divyanshu Tiwari";
-                }else{
-                    cmate[32] = null;
-                }break;
-            case R.id.checkBox34:
-                if (checked) {
-                    cmate[33] = "Divyata Pandey";
-                }else {
-                    cmate[33] = null;
-                }break;
-            case R.id.checkBox35:
-                if (checked) {
-                    cmate[34] = "Dream Pradhan";
-                }else{
-                    cmate[34] = null;
-                }break;
-            case R.id.checkBox36:
-                if (checked) {
-                    cmate[35] = "Ekta kumari";
-                }else {
-                    cmate[35] = null;
-                }break;
-            case R.id.checkBox37:
-                if (checked) {
-                    cmate[36] = "Gyarsilal Solanki";
-                }else{
-                    cmate[36] = null;
-                }break;
-            case R.id.checkBox38:
-                if (checked) {
-                    cmate[37] = "Harshit Parte";
-                }else {
-                    cmate[37] = null;
-                }break;
-            case R.id.checkBox39:
-                if (checked) {
-                    cmate[38] = "Harshit Goyal";
-                }else{
-                    cmate[38] = null;
-                }break;
-            case R.id.checkBox40:
-                if (checked) {
-                    cmate[41] = "Harshit Rai";
-                }else {
-                    cmate[41] = null;
-                }break;
-            case R.id.checkBox41:
-                if (checked) {
-                    cmate[40] = "Harshita GajBhiye";
-                }else{
-                    cmate[40] = null;
-                }break;
-            case R.id.checkBox42:
-                if (checked) {
-                    cmate[42] = "Harshita Kulchandani";
-                }else {
-                    cmate[42] = null;
-                }break;
-            case R.id.checkBox43:
-                if (checked) {
-                    cmate[42] = "Harshita Pandey";
-                }else{
-                    cmate[42] = null;
-                }break;
-            case R.id.checkBox44:
-                if (checked) {
-                    cmate[43] = "Himanshu Dhurvey";
-                }else {
-                    cmate[43] = null;
-                }break;
-            case R.id.checkBox45:
-                if (checked) {
-                    cmate[44] = "Himanshu Singh Senger";
-                }else{
-                    cmate[44] = null;
-                }break;
-            case R.id.checkBox46:
-                if (checked) {
-                    cmate[45] = "Himanshu Yadav";
-                }else {
-                    cmate[45] = null;
-                }break;
-            case R.id.checkBox47:
-                if (checked) {
-                    cmate[46] = "Jai Prakash Valecha";
-                }else{
-                    cmate[46] = null;
-                }break;
-            case R.id.checkBox48:
-                if (checked) {
-                    cmate[47] =  "Jeet Vijaywargiya";
-                }else {
-                    cmate[47] = null;
-                }break;
-            case R.id.checkBox49:
-                if (checked) {
-                    cmate[48] =  "Jitendra Kumar";
-                }else{
-                    cmate[48] = null;
-                }break;
-            case R.id.checkBox50:
-                if (checked) {
-                    cmate[49] = "Kamlesh Mali";
-                }else {
-                    cmate[49] = null;
-                }break;
-            case R.id.checkBox51:
-                if (checked) {
-                    cmate[50] =  "Kirti Gupta" ;
-                }else{
-                    cmate[50] = null;
-                }break;
-            case R.id.checkBox52:
-                if (checked) {
-                    cmate[51] =  "Kuljeet Singh Chauhan";
-                }else {
-                    cmate[51] = null;
-                }break;
-            case R.id.checkBox53:
-                if (checked) {
-                    cmate[52] =  "Mahesh Barapatre";
-                }else{
-                    cmate[52] = null;
-                }break;
-            case R.id.checkBox54:
-                if (checked) {
-                    cmate[53] = "Malay kumar Jain";
-                }else {
-                    cmate[53] = null;
-                }break;
-            case R.id.checkBox55:
-                if (checked) {
-                    cmate[54] = "Manish Anuragi" ;
-                }else{
-                    cmate[54] = null;
-                }break;
-            case R.id.checkBox56:
-                if (checked) {
-                    cmate[55] = "Mansi Sen" ;
-                }else {
-                    cmate[55] = null;
-                }break;
-            case R.id.checkBox57:
-                if (checked) {
-                    cmate[56] =  "Nagendra Singh lodh";
-                }else{
-                    cmate[56] = null;
-                }break;
-            case R.id.checkBox58:
-                if (checked) {
-                    cmate[57] =  "Neha Tumdam" ;
-                }else {
-                    cmate[57] = null;
-                }break;
-            case R.id.checkBox59:
-                if (checked) {
-                    cmate[58] =  "Nimit Kumar Soni";
-                }else{
-                    cmate[58] = null;
-                }break;
-            case R.id.checkBox60:
-                if (checked) {
-                    cmate[59] = "Nitesh Mandrai";
-                }else {
-                    cmate[59] = null;
-                }break;
-            case R.id.checkBox61:
-                if (checked) {
-                    cmate[62] =  "Parnika Upadhyay" ;
-                }else{
-                    cmate[62] = null;
-                }break;
-            case R.id.checkBox62:
-                if (checked) {
-                    cmate[61] = "Prasiddhi Rathore";
-                }else {
-                    cmate[61] = null;
-                }break;
-            case R.id.checkBox63:
-                if (checked) {
-                    cmate[62] =  "Priyanka Tiwari" ;
-                }else{
-                    cmate[62] = null;
-                }break;
-            case R.id.checkBox64:
-                if (checked) {
-                    cmate[63] ="Priyanshi Malviya" ;
-                }else {
-                    cmate[63] = null;
-                }break;
-            case R.id.checkBox65:
-                if (checked) {
-                    cmate[64] = "Rajesh Varkade";
-                }else{
-                    cmate[64] = null;
-                }break;
-            case R.id.checkBox66:
-                if (checked) {
-                    cmate[65] = "Rajneesh Diwedi";
-                }else{
-                    cmate[65] = null;
-                }break;
-            case R.id.checkBox67:
-                if (checked) {
-                    cmate[66] = "Rashi Gotiya";
-                }else {
-                    cmate[66] = null;
-                }break;
-            case R.id.checkBox68:
-                if (checked) {
-                    cmate[67] = "Raunak Gupta";
-                }else {
-                    cmate[67] = null;
-                }break;
-            case R.id.checkBox69:
-                if (checked) {
-                    cmate[68] = "Rishabh Prajapati";
-                }else{
-                    cmate[68] = null;
-                }break;
-            case R.id.checkBox70:
-                if (checked) {
-                    cmate[69] = "Sachendra Sing Thakur";
-                }else {
-                    cmate[69] = null;
-                }break;
-            case R.id.checkBox71:
-                if (checked) {
-                    cmate[70] = "Sakhi Sen";
-                }else{
-                    cmate[70] = null;
-                }break;
-            case R.id.checkBox72:
-                if (checked) {
-                    cmate[71] = "Samarpan Davis";
-                }else {
-                    cmate[71] = null;
-                }break;
-            case R.id.checkBox73:
-                if (checked) {
-                    cmate[72] = "Sambhav Jain";
-                }else{
-                    cmate[72] = null;
-                }break;
-            case R.id.checkBox74:
-                if (checked) {
-                    cmate[73] = "Sanskar Verma";
-                }else {
-                    cmate[73] = null;
-                }break;
-            case R.id.checkBox75:
-                if (checked) {
-                    cmate[74] = "Sheetal Dhurve";
-                }else{
-                    cmate[74] = null;
-                }break;
-            case R.id.checkBox76:
-                if (checked) {
-                    cmate[75] = "Shiv Kumar Bhalavi";
-                }else {
-                    cmate[75] = null;
-                }break;
-            case R.id.checkBox77:
-                if (checked) {
-                    cmate[76] = "Shivam Gupta";
-                }else{
-                    cmate[76] = null;
-                }break;
-            case R.id.checkBox78:
-                if (checked) {
-                    cmate[77] = "Shubham Dawar";
-                }else {
-                    cmate[77] = null;
-                }break;
-            case R.id.checkBox79:
-                if (checked) {
-                    cmate[78] = "Simran Raj";
-                }else{
-                    cmate[78] = null;
-                }break;
-            case R.id.checkBox80:
-                if (checked) {
-                    cmate[79] = "Sonal Jaiswar";
-                }else {
-                    cmate[79] = null;
-                }break;
-            case R.id.checkBox81:
-                if (checked) {
-                    cmate[80] = "Sparsh Shrivastava";
-                }else{
-                    cmate[80] = null;
-                }break;
+                                load_classname_adapter.notifyDataSetChanged();
+                            }
+                        }).setNegativeButton("No", new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
 
-            case R.id.checkBox82:
-                if (checked) {
-                    cmate[81] = "Shudhanshu Tiwari";
-                }else{
-                    cmate[81] = null;
-                }break;
-            case R.id.checkBox83:
-                if (checked) {
-                    cmate[82] = "Summit Rawat";
-                }else {
-                    cmate[82] = null;
-                }break;
-            case R.id.checkBox84:
-                if (checked) {
-                    cmate[83] = "Tarun Kumar Ghormare";
-                }else{
-                    cmate[83] = null;
-                }break;
-            case R.id.checkBox85:
-                if (checked) {
-                    cmate[84] = "Tilakraj Paraste";
-                }else {
-                    cmate[84] = null;
-                }break;
-            case R.id.checkBox86:
-                if (checked) {
-                    cmate[85] = "Varsa Bhoure";
-                }else{
-                    cmate[85] = null;
-                }break;
-            case R.id.checkBox87:
-                if (checked) {
-                    cmate[86] = "Vijen Kumar Jatav";
-                }else {
-                    cmate[86] = null;
-                }break;
-            case R.id.checkBox88:
-                if (checked) {
-                    cmate[87] = "Vishakha Rajput";
-                }else{
-                    cmate[87] = null;
-                }break;
-            case R.id.checkBox89:
-                if (checked) {
-                    cmate[88] = "Vishal Nagi";
-                }else {
-                    cmate[88] = null;
-                }break;
-            case R.id.checkBox90:
-                if (checked) {
-                    cmate[89] = "Vivek Kumar saket";
-                }else{
-                    cmate[89] = null;
-                }break;
-            case R.id.checkBox91:
-                if (checked) {
-                    cmate[90] = "Yogesh Kaushal";
-                }else {
-                    cmate[90] = null;
-                }break;
-            case R.id.checkBox92:
-                if (checked) {
-                    cmate[91] = "Urgen Dolma";
-                }else{
-                    cmate[91] = null;
-                }break;
-            case R.id.checkBox93:
-                if (checked) {
-                    cmate[92] = "Aastha Parihar";
-                }else {
-                    cmate[92] = null;
-                }break;
-            case R.id.checkBox94:
-                if (checked) {
-                    cmate[93] = "Laxmi Tripathi";
-                }else{
-                    cmate[93] = null;
-                }break;
-            case R.id.checkBox95:
-                if (checked) {
-                    cmate[94] = "Mamta Panda";
-                }else {
-                    cmate[94] = null;
-                }break;
-            case R.id.checkBox96:
-                if (checked) {
-                    cmate[95] = "Annapurna Dwivedi";
-                }else{
-                    cmate[95] = null;
-                }break;
-            case R.id.checkBox97:
-                if (checked) {
-                    cmate[96] = "Riya Bopche";
-                }else {
-                    cmate[96] = null;
-                }break;
-            case R.id.checkBox98:
-                if (checked) {
-                    cmate[97] = "Dhyan kamal";
-                }else{
-                    cmate[97] = null;
-                }break;
-            case R.id.checkBox99:
-                if (checked) {
-                    cmate[98] = "Mithlesh Ahirwar";
-                }else {
-                    cmate[98] = null;
-                }break;
-            case R.id.checkBox100:
-                if (checked) {
-                    cmate[99] = "Ajay Sarathe";
-                }else{
-                    cmate[99] = null;
-                }break;
-            case R.id.checkBox101:
-                if (checked) {
-                    cmate[100] = "Laxmikant Nayak";
-                }else {
-                    cmate[100] = null;
-                }break;
-            case R.id.checkBox102:
-                if (checked) {
-                    cmate[101] = "Jaishri Masram";
-                }else{
-                    cmate[101] = null;
-                }break;
+                            }
+                        });
+                builder.show();
 
-            // TODO: Veggie sandwich
-        }
+            }
+        });
+        // create class function
+        imageViewcreateclass.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Dialog dg = new Dialog(MainActivity.this);
+                dg.setContentView(layout.dialogbox);
+                TextView textView = dg.findViewById(id.dialogtitle);
+                textView.setText("Create Class");
+                EditText classname = dg.findViewById(id.Student_name);
+                EditText studentROll = dg.findViewById(id.Student_roll_number);
+                studentROll.setVisibility(View.GONE);
+                Button btn = dg.findViewById(id.savedata);
+                btn.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+
+                        if (classname.getText().toString().equals("")) {
+                            Toast.makeText(MainActivity.this, "Please fill all data", Toast.LENGTH_LONG).show();
+                        } else {
+                            classes_array.add(classname.getText().toString().trim());
+                            privatefullpath.mkdirs();
+                            File f = new File(privatefullpath, privateclassfile_fullname);
+                            try {
+                                FileWriter fw = new FileWriter(f, true);
+                                String cn = classes_array.get(classes_array.size() - 1) + "\n";
+                                fw.write(cn);
+                                fw.close();
+
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                            if (classes_array.size() != 0) {
+                                imageViewopenfolder.setVisibility(View.VISIBLE);
+                                imageViewdeleteclass.setVisibility(View.VISIBLE);
+                                spinner.setVisibility(View.VISIBLE);
+                                createclassmessage.setVisibility(View.GONE);
+                            }
+                            Toast.makeText(MainActivity.this, "Go to Attendance Folder in File-Manager. ",
+                                    Toast.LENGTH_LONG).show();
+
+                            load_classname_adapter.notifyDataSetChanged();
+                        }
+                        dg.dismiss();
+                    }
+                });
+                dg.show();
+            }
+        });
+        // add student function
+        imageViewaddstudent.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (!Objects.equals(current_class_halfname, "")) {
+                    Dialog dg = new Dialog(MainActivity.this);
+                    dg.setContentView(layout.dialogbox);
+                    EditText studentname = dg.findViewById(id.Student_name);
+                    EditText studentROll = dg.findViewById(id.Student_roll_number);
+                    Button btn = dg.findViewById(id.savedata);
+                    btn.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+
+                            if (studentname.getText().toString().equals("")) {
+                                Toast.makeText(MainActivity.this, "Please fill all data", Toast.LENGTH_LONG).show();
+                            } else if (studentROll.getText().toString().equals("")) {
+                                Toast.makeText(MainActivity.this, "Please fill all data", Toast.LENGTH_LONG).show();
+                            } else {
+                                String name = studentname.getText().toString().toUpperCase().trim();
+                                String roll = studentROll.getText().toString().toUpperCase().trim();
+                                String fullintro = String.format("%-20s" + "%s", name, roll);
+                                student_array_with_roll_num.add(fullintro);
+                                File f = new File(privatefullpath, current_class_halfname + ".xlsx");
+                                try {
+                                    FileWriter fw = new FileWriter(f, true);
+                                    fw.write(fullintro + "\n");
+                                    fw.close();
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                }
+
+                                adapter.notifyItemInserted(student_array_with_roll_num.size() - 1);
+                                recyclerView.scrollToPosition(student_array_with_roll_num.size() - 1);
+
+                            }
+                            dg.dismiss();
+                        }
+                    });
+                    dg.show();
+                }
+                ;
+            }// if ends
+        });// ends
+
     }
 
-
-
-}
+};
